@@ -1,0 +1,35 @@
+# === Simulation Results ===
+results/
+**/results/
+
+# === Python Cache ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === Virtual Environments ===
+venv/
+env/
+.venv/
+.python_env/
+*.env
+
+# === IDE & Editor Files ===
+.vscode/
+.idea/
+
+# === OS-specific Files ===
+.DS_Store
+Thumbs.db
+
+# === Logs & Outputs ===
+logs/
+*.log
+output/
+outputs/
+*.out
+*.txt~
+
+# === Jupyter Notebooks temporary files ===
+.ipynb_checkpoints/
