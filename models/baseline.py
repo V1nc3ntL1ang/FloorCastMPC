@@ -103,12 +103,15 @@ def simulate_baseline(elevators):
     for elev in elevators:
         current_floor = elev.floor
         current_time = 0.0
+        elev.initial_floor = current_floor
 
         # 按到达时间排序的待服务请求 / requests sorted by arrival time
         pending = sorted(elev.queue, key=lambda r: r.arrival_time)
         for req in pending:
             req.pickup_time = None
             req.dropoff_time = None
+            req.origin_arrival_time = None
+            req.destination_arrival_time = None
         waiting = (
             []
         )  # 已到达但尚未上车 / arrived requests waiting on their origin floor
@@ -161,6 +164,7 @@ def simulate_baseline(elevators):
             if not boarders and not leavers:
                 return
 
+            arrive_time = current_time
             boarding_weight = sum(r.load for r in boarders)
             leaving_weight = sum(r.load for r in leavers)
             dwell = hold_time(boarding_weight, leaving_weight)
@@ -171,16 +175,19 @@ def simulate_baseline(elevators):
             for req in leavers:
                 if req in onboard:
                     onboard.remove(req)
+                req.destination_arrival_time = arrive_time
                 req.dropoff_time = current_time
 
             for req in boarders:
                 if req in waiting:
                     waiting.remove(req)
+                req.origin_arrival_time = arrive_time
                 req.pickup_time = current_time
                 if req not in service_log:
                     service_log.append(req)
                 if req.destination == current_floor:
                     req.dropoff_time = current_time
+                    req.destination_arrival_time = arrive_time
                 else:
                     onboard.append(req)
 

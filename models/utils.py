@@ -79,7 +79,10 @@ def ensure_directory(path: str):
     os.makedirs(path, exist_ok=True)
 
 
-def plot_elevator_movements(elevators, filename="results/plots/elevator_schedule.png"):
+def plot_elevator_movements(
+    elevators,
+    filename="/home/v1nc3nt/WinDesktop/SCUT/作业/优化方法/LoadAwareElevator/results/plots/elevator_schedule.png",
+):
     """
     Plot elevator service schedule (floor vs. task index) / 绘制电梯服务序列（楼层-任务索引）。
     每部电梯的服务顺序依次展示。
@@ -101,7 +104,7 @@ def plot_elevator_movements(elevators, filename="results/plots/elevator_schedule
         return
 
     ensure_directory(os.path.dirname(filename))
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(16, 10))
     colors = ["C0", "C1", "C2", "C3", "C4", "C5"]
 
     for i, elev in enumerate(elevators):
@@ -132,6 +135,106 @@ def plot_elevator_movements(elevators, filename="results/plots/elevator_schedule
     plt.savefig(filename)
     plt.close()
     print(f"[Plot Saved] Elevator movement plot saved to: {filename}")
+
+
+def plot_elevator_movements_time(
+    elevators,
+    filename="/home/v1nc3nt/WinDesktop/SCUT/作业/优化方法/LoadAwareElevator/results/plots/elevator_schedule_time.png",
+):
+    """Plot elevator services with time on the horizontal axis."""
+
+    try:
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+        os.environ.setdefault("MKL_NUM_THREADS", "1")
+        os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+        os.environ.setdefault("KMP_AFFINITY", "disabled")
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import FuncFormatter
+    except Exception as exc:
+        print(f"[Plot Skipped] {exc}")
+        return
+
+    ensure_directory(os.path.dirname(filename))
+    plt.figure(figsize=(12, 6))
+    colors = ["C0", "C1", "C2", "C3", "C4", "C5"]
+
+    for i, elev in enumerate(elevators):
+        color = colors[i % len(colors)]
+        requests = sorted(
+            elev.served_requests,
+            key=lambda r: (
+                getattr(r, "origin_arrival_time", None)
+                or getattr(r, "pickup_time", float("inf"))
+            ),
+        )
+
+        if not requests:
+            continue
+
+        first_req = requests[0]
+        start_time = (
+            getattr(first_req, "origin_arrival_time", None)
+            or getattr(first_req, "pickup_time", None)
+            or 0.0
+        )
+        timeline = [(start_time, getattr(elev, "initial_floor", elev.floor))]
+
+        def append_point(time_value, floor_value):
+            if time_value is None or floor_value is None:
+                return
+            last_time, last_floor = timeline[-1]
+            if time_value == last_time and floor_value == last_floor:
+                return
+            timeline.append((time_value, floor_value))
+
+        for req in requests:
+            arrival_origin = getattr(req, "origin_arrival_time", None)
+            pickup_time = getattr(req, "pickup_time", None)
+            dest_arrival = getattr(req, "destination_arrival_time", None)
+            dropoff_time = getattr(req, "dropoff_time", None)
+
+            if arrival_origin is None:
+                arrival_origin = pickup_time
+            if dest_arrival is None:
+                dest_arrival = dropoff_time
+
+            append_point(arrival_origin, req.origin)
+
+            if pickup_time is not None:
+                append_point(pickup_time, req.origin)
+
+            append_point(dest_arrival, req.destination)
+
+            if dropoff_time is not None:
+                append_point(dropoff_time, req.destination)
+
+        xs, ys = zip(*timeline)
+        plt.plot(xs, ys, color=color, linewidth=1.6, alpha=0.9, label=f"Elevator {elev.id}")
+        plt.scatter(xs, ys, color=color, s=12)
+
+    plt.xlabel("Time of Day")
+    plt.ylabel("Floor Level")
+    plt.title("Elevator Service Timeline (Baseline Strategy)")
+    ax = plt.gca()
+
+    def _format_hhmm(x, pos):
+        total = int(max(x, 0)) % (24 * 3600)
+        hour = total // 3600
+        minute = (total % 3600) // 60
+        return f"{hour:02d}:{minute:02d}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(_format_hhmm))
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+    print(f"[Plot Saved] Elevator timeline plot saved to: {filename}")
 
 
 def print_elevator_queues(elevators):
@@ -167,7 +270,7 @@ def log_results(
     total_energy,
     total_cost,
     *,
-    outdir="results/summary",
+    outdir="/home/v1nc3nt/WinDesktop/SCUT/作业/优化方法/LoadAwareElevator/results/summary",
 ):
     """
     Enhanced logging with per-elevator/per-request views / 输出增强日志（按电梯与按请求）。
@@ -183,7 +286,9 @@ def log_results(
         f.write(f"Total Objective Cost: {total_cost:.2f}\n\n")
 
         for elev in elevators:
-            f.write(f"[Elevator {elev.id}] Served {len(elev.served_requests)} requests\n")
+            f.write(
+                f"[Elevator {elev.id}] Served {len(elev.served_requests)} requests\n"
+            )
             if not elev.served_requests:
                 f.write("  (No requests)\n\n")
                 continue
@@ -193,7 +298,9 @@ def log_results(
                 dropoff = getattr(req, "dropoff_time", None)
                 wait_time = pickup - req.arrival_time if pickup is not None else None
                 ride_time = (
-                    dropoff - pickup if pickup is not None and dropoff is not None else None
+                    dropoff - pickup
+                    if pickup is not None and dropoff is not None
+                    else None
                 )
                 total_duration = (
                     dropoff - req.arrival_time if dropoff is not None else None

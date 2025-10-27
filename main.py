@@ -31,6 +31,7 @@ def main():
         f"Total Time: {total_time:.2f}s | "
         f"Total Energy: {total_energy:.2f}J | "
         f"Cost: {total_cost:.2f}"
+        plot_elevator_movements_time(elevators)
     )
 
 
