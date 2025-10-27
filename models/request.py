@@ -5,7 +5,7 @@ from models.variables import Request
 
 
 # ------------------------------
-# Off-peak: 时间均匀分布
+# Off-peak (Uniform Distribution) / 平峰期（均匀分布）
 # ------------------------------
 def generate_offpeak_uniform(
     num_requests: int,
@@ -21,12 +21,12 @@ def generate_offpeak_uniform(
     seed_offset: int = 0,
 ):
     """
-    生成平峰请求：时间在 [start_time, end_time] 均匀分布。
-    三个比例定义方向与是否涉及 1 楼：
-      - ratio_origin1：origin=1, dest∈[2..F]
-      - ratio_dest1  ：origin∈[2..F], dest=1
-      - ratio_other  ：origin,dest∈[2..F], 且 origin!=dest
-    intensity 用于人数缩放：实际生成数量 = floor(num_requests * intensity)
+    Generate off-peak requests with uniform arrival times / 生成平峰期均匀分布的请求。
+    参数说明 / Parameter notes:
+      - ratio_origin1: origin=1, dest∈[2..F] 的比例（上行）
+      - ratio_dest1 : origin∈[2..F], dest=1 的比例（下行）
+      - ratio_other : origin,dest∈[2..F] 且 origin!=dest 的比例（楼层间）
+      - intensity   : 强度缩放系数，实际请求数 = floor(num_requests * intensity)
     """
     random.seed(cfg.SIM_RANDOM_SEED + seed_offset)
     n = max(0, int(num_requests * max(0.0, intensity)))
@@ -50,7 +50,7 @@ def generate_offpeak_uniform(
 
 
 # ------------------------------
-# Peak: 时间正态分布
+# Peak (Gaussian Distribution) / 高峰期（高斯分布）
 # ------------------------------
 def generate_peak_gaussian(
     num_requests: int,
@@ -68,8 +68,8 @@ def generate_peak_gaussian(
     seed_offset: int = 100,
 ):
     """
-    生成高峰请求：时间在 [start_time, end_time] 上服从截断高斯分布。
-    其它参数同上；sigma = (end-start) * sigma_ratio。
+    Generate peak-period requests using truncated Gaussian arrival / 生成截断高斯分布的高峰期请求。
+    其它参数含义与平峰函数一致；sigma = (end-start) * sigma_ratio。
     """
     random.seed(cfg.SIM_RANDOM_SEED + seed_offset)
     n = max(0, int(num_requests * max(0.0, intensity)))
@@ -97,7 +97,7 @@ def generate_peak_gaussian(
 
 
 def generate_requests_day(total_requests: int):
-    """Simulate one full day of elevator requests."""
+    """Simulate a full-day demand profile / 生成完整一天的乘梯请求序列。"""
     total_morning = int(total_requests * cfg.PEAK_MORNING_RATIO)
     total_day = int(total_requests * cfg.OFFPEAK_DAY_RATIO)
     total_evening = int(total_requests * cfg.PEAK_EVENING_RATIO)
@@ -159,5 +159,6 @@ def generate_requests_day(total_requests: int):
         seed_offset=400,
     )
 
+    # 统一按到达时间排序 / merge and sort by arrival time
     requests = sorted(morning + day + evening + night, key=lambda r: r.arrival_time)
     return requests

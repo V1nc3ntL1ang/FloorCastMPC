@@ -2,9 +2,9 @@ import config as cfg
 
 
 def segment_energy(load, distance, direction="up"):
-    """Compute motion energy for one travel segment (no regeneration)."""
+    """Energy consumed for one segment (no regen) / 计算单段行程能耗（不含能量回收）。"""
     delta_mass = (cfg.ENERGY_CAR_MASS + load) - cfg.ENERGY_COUNTERWEIGHT_MASS
-    sign = 1 if direction == "up" else -1
+    sign = 1 if direction == "up" else -1  # 上行正功，下行潜在回收 / upward positive work
     g = 9.81
     energy_motion = (
         sign * g * delta_mass * distance + cfg.ENERGY_FRICTION_PER_METER * distance

@@ -1,12 +1,13 @@
 import os
 import random
+from datetime import datetime
 from typing import Tuple
 
 
 def h2s(hour, minute: int = 0) -> float:
     """
-    Convert time-of-day to seconds.
-    支持以下三种输入：
+    Convert time-of-day to seconds / 将时刻转换为秒数.
+    支持以下输入形式：
       - 两个整数：h2s(7, 30)
       - 单个整数：h2s(7)
       - 字符串：h2s("7:30") 或 h2s("18:45")
@@ -19,7 +20,7 @@ def h2s(hour, minute: int = 0) -> float:
 
 
 def duration_seconds(start, end) -> float:
-    """计算时间段长度（秒），支持跨日。"""
+    """Compute interval length in seconds (cross-day safe) / 计算时间段长度（秒），支持跨日。"""
     if isinstance(start, tuple):
         start_s = h2s(*start)
     else:
@@ -33,8 +34,10 @@ def duration_seconds(start, end) -> float:
     return end_s - start_s
 
 
-def validate_ratios(r_origin1: float, r_dest1: float, r_other: float) -> Tuple[float, float]:
-    """Normalize direction ratios and return cumulative cutoffs."""
+def validate_ratios(
+    r_origin1: float, r_dest1: float, r_other: float
+) -> Tuple[float, float]:
+    """Normalize ratios and return cumulative cut-offs / 归一化方向比例并返回累计边界。"""
     total = r_origin1 + r_dest1 + r_other
     if total <= 0:
         raise ValueError("All ratios are zero or negative.")
@@ -49,14 +52,14 @@ def validate_ratios(r_origin1: float, r_dest1: float, r_other: float) -> Tuple[f
 
 
 def rand_upper_floor(max_floor: int) -> int:
-    """Randomly select a floor in [2, max_floor]."""
+    """Randomly select a floor in [2, max_floor] / 随机取 2..max_floor 的楼层。"""
     if max_floor < 2:
         raise ValueError("max_floor must be at least 2.")
     return random.randint(2, max_floor)
 
 
 def rand_other_pair(max_floor: int) -> Tuple[int, int]:
-    """返回两个不相等且都不为 1 的楼层（2..max_floor）。"""
+    """Return two distinct non-1 floors / 返回两个不等且不为 1 的楼层（范围 2..max_floor）。"""
     a = rand_upper_floor(max_floor)
     b = rand_upper_floor(max_floor)
     while b == a:
@@ -64,8 +67,13 @@ def rand_other_pair(max_floor: int) -> Tuple[int, int]:
     return a, b
 
 
+# ============================================================
+# Logging & Result Summaries
+# ============================================================
+
+
 def ensure_directory(path: str):
-    """Create directory if it does not exist."""
+    """Create directory when missing / 若目录不存在则创建。"""
     if not path:
         return
     os.makedirs(path, exist_ok=True)
@@ -73,10 +81,11 @@ def ensure_directory(path: str):
 
 def plot_elevator_movements(elevators, filename="results/plots/elevator_schedule.png"):
     """
-    Plot elevator service schedule (floor vs. task index).
-    Each elevator's served requests are visualized sequentially.
+    Plot elevator service schedule (floor vs. task index) / 绘制电梯服务序列（楼层-任务索引）。
+    每部电梯的服务顺序依次展示。
     """
     try:
+        # Limit BLAS/OpenMP threads to keep sandbox稳定
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -127,7 +136,7 @@ def plot_elevator_movements(elevators, filename="results/plots/elevator_schedule
 
 def print_elevator_queues(elevators):
     """
-    Print the list of requests served by each elevator.
+    Print served requests for each elevator / 输出各电梯的服务队列。
     """
     print("\n=== Elevator Queues ===")
     for elev in elevators:
@@ -142,16 +151,14 @@ def print_elevator_queues(elevators):
     print("========================\n")
 
 
-def log_results_to_file(
+def _write_basic_summary(
     elevators,
     total_time,
     total_energy,
     total_cost,
     filename="results/plots/summary.txt",
 ):
-    """
-    Save textual results and queue info to a text file.
-    """
+    """Write legacy summary file for compatibility / 输出兼容用 summary.txt。"""
     ensure_directory(os.path.dirname(filename))
     with open(filename, "w", encoding="utf-8") as f:
         f.write("=== Elevator Baseline Simulation Summary ===\n")
@@ -171,3 +178,143 @@ def log_results_to_file(
             f.write("\n")
 
     print(f"[Log Saved] Summary written to {filename}")
+
+
+def _format_time(value):
+    """Pretty-print time value / 时间值格式化。"""
+    return f"{value:.1f}s" if value is not None else "N/A"
+
+
+def _format_table(value, width):
+    """Pad table cell / 表格列格式化。"""
+    return f"{value:>{width}.1f}" if value is not None else "N/A".rjust(width)
+
+
+def log_results(
+    elevators,
+    total_time,
+    total_energy,
+    total_cost,
+    *,
+    outdir="results/summary",
+    basic_summary_path="results/plots/summary.txt",
+):
+    """
+    Enhanced logging with per-elevator/per-request views / 输出增强日志（按电梯与按请求）。
+    同时保留传统 summary.txt 以保持兼容。
+    """
+    ensure_directory(outdir)
+
+    by_elevator_path = os.path.join(outdir, "summary_by_elevator.txt")
+    with open(by_elevator_path, "w", encoding="utf-8") as f:
+        f.write("=== Elevator Service Summary (by Elevator) ===\n")
+        f.write(f"Generated at: {datetime.now()}\n")
+        f.write(f"Total Time: {total_time:.2f} s\n")
+        f.write(f"Total Energy: {total_energy:.2f} J\n")
+        f.write(f"Total Objective Cost: {total_cost:.2f}\n\n")
+
+        for elev in elevators:
+            f.write(f"[Elevator {elev.id}] Served {len(elev.served_requests)} requests\n")
+            if not elev.served_requests:
+                f.write("  (No requests)\n\n")
+                continue
+
+            for req in elev.served_requests:
+                pickup = getattr(req, "pickup_time", None)
+                dropoff = getattr(req, "dropoff_time", None)
+                wait_time = pickup - req.arrival_time if pickup is not None else None
+                ride_time = (
+                    dropoff - pickup if pickup is not None and dropoff is not None else None
+                )
+                total_duration = (
+                    dropoff - req.arrival_time if dropoff is not None else None
+                )
+
+                f.write(
+                    "  Req#{rid:03d}: {origin:02d} → {dest:02d} | "
+                    "Load={load:.1f}kg | Arr={arr:.1f}s | "
+                    "Pick={pick} | Drop={drop} | Wait={wait} | "
+                    "Ride={ride} | Total={total}\n".format(
+                        rid=req.id,
+                        origin=req.origin,
+                        dest=req.destination,
+                        load=req.load,
+                        arr=req.arrival_time,
+                        pick=_format_time(pickup),
+                        drop=_format_time(dropoff),
+                        wait=_format_time(wait_time),
+                        ride=_format_time(ride_time),
+                        total=_format_time(total_duration),
+                    )
+                )
+            f.write("\n")
+
+    print(f"[Log Saved] Elevator summary → {by_elevator_path}")
+
+    all_requests = []
+    for elev in elevators:
+        for req in elev.served_requests:
+            all_requests.append((elev.id, req))
+
+    all_requests.sort(key=lambda x: x[1].arrival_time)
+
+    by_request_path = os.path.join(outdir, "summary_by_request.txt")
+    with open(by_request_path, "w", encoding="utf-8") as f:
+        f.write("=== Request Timeline Summary (by Request) ===\n")
+        f.write(f"Generated at: {datetime.now()}\n")
+        f.write(f"Total Elevators: {len(elevators)}\n")
+        f.write(f"Total Requests: {len(all_requests)}\n\n")
+
+        header = (
+            "ReqID | Elevator | Origin→Dest | Load(kg) | Arrive(s) | Pickup(s) | Dropoff(s) "
+            "| Wait(s) | Ride(s) | Total(s)\n"
+        )
+        f.write(header)
+        f.write("-" * len(header) + "\n")
+
+        for eid, req in all_requests:
+            pickup = getattr(req, "pickup_time", None)
+            dropoff = getattr(req, "dropoff_time", None)
+            wait_time = pickup - req.arrival_time if pickup is not None else None
+            ride_time = (
+                dropoff - pickup if pickup is not None and dropoff is not None else None
+            )
+            total_duration = dropoff - req.arrival_time if dropoff is not None else None
+
+            f.write(
+                f"{req.id:4d} | {eid:8d} | "
+                f"{req.origin:2d}→{req.destination:2d} | "
+                f"{req.load:8.1f} | "
+                f"{req.arrival_time:9.1f} | {_format_table(pickup, 9)} | {_format_table(dropoff, 9)} | "
+                f"{_format_table(wait_time, 7)} | {_format_table(ride_time, 7)} | {_format_table(total_duration, 8)}\n"
+            )
+
+    print(f"[Log Saved] Request summary → {by_request_path}")
+
+    _write_basic_summary(
+        elevators,
+        total_time,
+        total_energy,
+        total_cost,
+        filename=basic_summary_path,
+    )
+
+
+def log_results_to_file(
+    elevators,
+    total_time,
+    total_energy,
+    total_cost,
+    filename="results/plots/summary.txt",
+):
+    """
+    Backward-compatible logging helper / 兼容旧接口的日志封装。
+    """
+    log_results(
+        elevators,
+        total_time,
+        total_energy,
+        total_cost,
+        outdir="results/summary",
+        basic_summary_path=filename,
+    )
