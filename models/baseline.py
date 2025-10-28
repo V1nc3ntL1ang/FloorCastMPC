@@ -184,7 +184,7 @@ def simulate_baseline(elevators):
 
             arrive_time = current_time
             boarding_weight = sum(r.load for r in boarders)
-            dwell = hold_time(boarding_weight, leaving_weight)
+            dwell = hold_time(boarding_weight, leaving_weight) if boarders else 0.0
 
             current_time += dwell
             total_time += dwell

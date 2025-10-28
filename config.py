@@ -92,7 +92,7 @@ DEFAULT_INTENSITY = 1.0  # 默认强度系数 / intensity scaling
 MORNING_INTENSITY = 1.0  # 早高峰强度 / morning peak intensity
 MORNING_LOAD_MIN = 60  # 早高峰负载下界 (kg)
 MORNING_LOAD_MAX = 150  # 早高峰负载上界 (kg)
-MORNING_SIGMA_RATIO = 0.05  # 早高峰标准差比 / time spread ratio
+MORNING_SIGMA_RATIO = 0.30  # 早高峰标准差比 / time spread ratio
 
 # 三个比例之和应为 1.0 / ratios must sum to 1.0
 MORNING_RATIO_ORIGIN1 = 0.05  # 一楼出发比例 / upward trips from floor 1
@@ -118,7 +118,7 @@ DAY_RATIO_OTHER = 0.10  # 楼层间往返 / inter-floor traffic
 EVENING_INTENSITY = 1.0  # 晚高峰强度 / evening peak intensity
 EVENING_LOAD_MIN = 60  # 晚高峰负载下界 (kg)
 EVENING_LOAD_MAX = 150  # 晚高峰负载上界 (kg)
-EVENING_SIGMA_RATIO = 0.15  # 晚高峰标准差比 / time spread ratio
+EVENING_SIGMA_RATIO = 0.30  # 晚高峰标准差比 / time spread ratio
 
 EVENING_RATIO_ORIGIN1 = 0.90  # 一楼出发比例 / upward trips from floor 1
 EVENING_RATIO_DEST1 = 0.05  # 抵达一楼比例 / down trips to floor 1
@@ -161,10 +161,10 @@ OFFPEAK_RATIO_OTHER = DAY_RATIO_OTHER
 # 3. 时段定义 (小时:分钟) / Period Definitions (HH:MM)
 # ============================================================
 
-PEAK_MORNING_START = (8, 0)  # 早高峰开始 / morning start
-PEAK_MORNING_END = (9, 0)  # 早高峰结束 / morning end
+PEAK_MORNING_START = (7, 0)  # 早高峰开始 / morning start
+PEAK_MORNING_END = (10, 30)  # 早高峰结束 / morning end
 
-OFFPEAK_DAY_START = (9, 0)  # 白天平峰开始 / daytime off-peak start
+OFFPEAK_DAY_START = (10, 30)  # 白天平峰开始 / daytime off-peak start
 OFFPEAK_DAY_END = (17, 0)  # 白天平峰结束 / daytime off-peak end
 
 PEAK_EVENING_START = (17, 0)  # 晚高峰开始 / evening start
@@ -173,8 +173,8 @@ PEAK_EVENING_END = (21, 0)  # 晚高峰结束 / evening end
 OFFPEAK_NIGHT_START = (21, 0)  # 夜间平峰开始 / night off-peak start
 OFFPEAK_NIGHT_END = (7 + 24, 0)  # 夜间平峰结束 (跨日) / night off-peak end (next day)
 
-PEAK_MORNING_MU = "8:30"  # 早高峰中心 / morning peak center
-PEAK_EVENING_MU = "18:00"  # 晚高峰中心 / evening peak center
+PEAK_MORNING_MU = "8:50"  # 早高峰中心 / morning peak center
+PEAK_EVENING_MU = "18:30"  # 晚高峰中心 / evening peak center
 
 # ============================================================
 # 自动计算时段权重 / Auto-computed period weights
