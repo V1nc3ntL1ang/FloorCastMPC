@@ -268,23 +268,29 @@ def _format_table(value, width):
 
 def log_results(
     elevators,
-    total_time,
+    system_time,
     total_energy,
     total_cost,
+    passenger_total_time,
+    passenger_wait_time,
+    passenger_in_cab_time,
     *,
     outdir="/home/v1nc3nt/WinDesktop/SCUT/作业/优化方法/LoadAwareElevator/results/summary",
 ):
-    """
-    Enhanced logging with per-elevator/per-request views / 输出增强日志（按电梯与按请求）。
-    """
+    """Enhanced logging with per-elevator/per-request views / 输出增强日志（按电梯与按请求）。"""
     ensure_directory(outdir)
 
     by_elevator_path = os.path.join(outdir, "summary_by_elevator.txt")
     with open(by_elevator_path, "w", encoding="utf-8") as f:
         f.write("=== Elevator Service Summary (by Elevator) ===\n")
         f.write(f"Generated at: {datetime.now()}\n")
-        f.write(f"Total Time: {total_time:.2f} s\n")
+        f.write(f"System Active Time: {system_time:.2f} s\n")
         f.write(f"Total Energy: {total_energy:.2f} J\n")
+        f.write(
+            "Passenger Time: {:.2f} s (wait {:.2f} s | in-cab {:.2f} s)\n".format(
+                passenger_total_time, passenger_wait_time, passenger_in_cab_time
+            )
+        )
         f.write(f"Total Objective Cost: {total_cost:.2f}\n\n")
 
         for elev in elevators:
@@ -296,32 +302,43 @@ def log_results(
                 continue
 
             for req in elev.served_requests:
+                origin_arrival = getattr(req, "origin_arrival_time", None)
                 pickup = getattr(req, "pickup_time", None)
-                dropoff = getattr(req, "dropoff_time", None)
-                wait_time = pickup - req.arrival_time if pickup is not None else None
-                ride_time = (
-                    dropoff - pickup
-                    if pickup is not None and dropoff is not None
+                dest_arrival = getattr(req, "destination_arrival_time", None)
+                completion = getattr(req, "dropoff_time", None)
+
+                wait_time = (
+                    origin_arrival - req.arrival_time
+                    if origin_arrival is not None
+                    else None
+                )
+                onboard_time = (
+                    dest_arrival - origin_arrival
+                    if dest_arrival is not None and origin_arrival is not None
                     else None
                 )
                 total_duration = (
-                    dropoff - req.arrival_time if dropoff is not None else None
+                    dest_arrival - req.arrival_time
+                    if dest_arrival is not None
+                    else None
                 )
 
                 f.write(
                     "  Req#{rid:03d}: {origin:02d} → {dest:02d} | "
                     "Load={load:.1f}kg | Arr={arr:.1f}s | "
-                    "Pick={pick} | Drop={drop} | Wait={wait} | "
-                    "Ride={ride} | Total={total}\n".format(
+                    "Orig={orig} | Pick={pick} | Dest={dest_arr} | Comp={comp} | "
+                    "Wait={wait} | Onboard={onboard} | Total={total}\n".format(
                         rid=req.id,
                         origin=req.origin,
                         dest=req.destination,
                         load=req.load,
                         arr=req.arrival_time,
+                        orig=_format_time(origin_arrival),
                         pick=_format_time(pickup),
-                        drop=_format_time(dropoff),
+                        dest_arr=_format_time(dest_arrival),
+                        comp=_format_time(completion),
                         wait=_format_time(wait_time),
-                        ride=_format_time(ride_time),
+                        onboard=_format_time(onboard_time),
                         total=_format_time(total_duration),
                     )
                 )
@@ -344,27 +361,39 @@ def log_results(
         f.write(f"Total Requests: {len(all_requests)}\n\n")
 
         header = (
-            "ReqID | Elevator | Origin→Dest | Load(kg) | Arrive(s) | Pickup(s) | Dropoff(s) "
-            "| Wait(s) | Ride(s) | Total(s)\n"
+            "ReqID | Elevator | Origin→Dest | Load(kg) | Arrive(s) | OrigArr(s) | "
+            "Pickup(s) | DestArr(s) | Complete(s) | Wait(s) | Onboard(s) | Total(s)\n"
         )
         f.write(header)
         f.write("-" * len(header) + "\n")
 
         for eid, req in all_requests:
+            origin_arrival = getattr(req, "origin_arrival_time", None)
             pickup = getattr(req, "pickup_time", None)
-            dropoff = getattr(req, "dropoff_time", None)
-            wait_time = pickup - req.arrival_time if pickup is not None else None
-            ride_time = (
-                dropoff - pickup if pickup is not None and dropoff is not None else None
+            dest_arrival = getattr(req, "destination_arrival_time", None)
+            completion = getattr(req, "dropoff_time", None)
+
+            wait_time = (
+                origin_arrival - req.arrival_time
+                if origin_arrival is not None
+                else None
             )
-            total_duration = dropoff - req.arrival_time if dropoff is not None else None
+            onboard_time = (
+                dest_arrival - origin_arrival
+                if dest_arrival is not None and origin_arrival is not None
+                else None
+            )
+            total_duration = (
+                dest_arrival - req.arrival_time if dest_arrival is not None else None
+            )
 
             f.write(
                 f"{req.id:4d} | {eid:8d} | "
                 f"{req.origin:2d}→{req.destination:2d} | "
                 f"{req.load:8.1f} | "
-                f"{req.arrival_time:9.1f} | {_format_table(pickup, 9)} | {_format_table(dropoff, 9)} | "
-                f"{_format_table(wait_time, 7)} | {_format_table(ride_time, 7)} | {_format_table(total_duration, 8)}\n"
+                f"{req.arrival_time:9.1f} | {_format_table(origin_arrival, 10)} | {_format_table(pickup, 9)} | "
+                f"{_format_table(dest_arrival, 9)} | {_format_table(completion, 11)} | "
+                f"{_format_table(wait_time, 7)} | {_format_table(onboard_time, 8)} | {_format_table(total_duration, 8)}\n"
             )
 
     print(f"[Log Saved] Request summary → {by_request_path}")

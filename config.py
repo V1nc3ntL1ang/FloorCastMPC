@@ -86,36 +86,76 @@ DEFAULT_SIGMA_RATIO = 0.05  # 默认高斯标准差比 / default sigma ratio
 DEFAULT_INTENSITY = 1.0  # 默认强度系数 / intensity scaling
 
 # ============================================================
-# 1. 平峰参数 (Uniform Distribution) / Off-Peak Uniform Model
+# 1. 早高峰参数 (Gaussian) / Morning Peak Parameters
 # ============================================================
 
-OFFPEAK_INTENSITY = 0.4  # 平峰强度 (相对高峰) / relative intensity vs peak
-OFFPEAK_LOAD_MIN = 50  # 平峰负载下界 (kg)
-OFFPEAK_LOAD_MAX = 110  # 平峰负载上界 (kg)
+MORNING_INTENSITY = 1.0  # 早高峰强度 / morning peak intensity
+MORNING_LOAD_MIN = 60  # 早高峰负载下界 (kg)
+MORNING_LOAD_MAX = 150  # 早高峰负载上界 (kg)
+MORNING_SIGMA_RATIO = 0.05  # 早高峰标准差比 / time spread ratio
 
 # 三个比例之和应为 1.0 / ratios must sum to 1.0
-OFFPEAK_RATIO_ORIGIN1 = 0.45  # 一楼出发 (上行) / departures from floor 1
-OFFPEAK_RATIO_DEST1 = 0.45  # 抵达一楼 (下行) / arrivals to floor 1
-OFFPEAK_RATIO_OTHER = 0.10  # 楼层间往返 / inter-floor traffic
+MORNING_RATIO_ORIGIN1 = 0.05  # 一楼出发比例 / upward trips from floor 1
+MORNING_RATIO_DEST1 = 0.90  # 抵达一楼比例 / down trips to floor 1
+MORNING_RATIO_OTHER = 0.10  # 楼层间流动 / inter-floor movement
 
 # ============================================================
-# 2. 高峰参数 (Gaussian Distribution) / Peak Gaussian Model
+# 2. 白天平峰参数 (Uniform) / Daytime Off-Peak Parameters
 # ============================================================
 
-PEAK_INTENSITY = 1.0  # 高峰强度系数 / peak intensity scale
-PEAK_LOAD_MIN = 60  # 高峰负载下界 (kg)
-PEAK_LOAD_MAX = 150  # 高峰负载上界 (kg)
-PEAK_SIGMA_RATIO = 0.05  # 高峰标准差比 / time spread ratio
+DAY_INTENSITY = 0.4  # 白天平峰强度 / daytime off-peak intensity
+DAY_LOAD_MIN = 50  # 白天平峰负载下界 (kg)
+DAY_LOAD_MAX = 110  # 白天平峰负载上界 (kg)
 
-# 早高峰 / morning rush
-PEAK_MORNING_RATIO_ORIGIN1 = 0.05  # 一楼出发比例 / upward trips from floor 1
-PEAK_MORNING_RATIO_DEST1 = 0.90  # 抵达一楼比例 / down trips to floor 1
-PEAK_MORNING_RATIO_OTHER = 0.05  # 楼层间流动 / inter-floor movement
+DAY_RATIO_ORIGIN1 = 0.45  # 一楼出发 (上行) / departures from floor 1
+DAY_RATIO_DEST1 = 0.45  # 抵达一楼 (下行) / arrivals to floor 1
+DAY_RATIO_OTHER = 0.10  # 楼层间往返 / inter-floor traffic
 
-# 晚高峰 / evening rush
-PEAK_EVENING_RATIO_ORIGIN1 = 0.90  # 一楼出发比例 / upward trips from floor 1
-PEAK_EVENING_RATIO_DEST1 = 0.05  # 抵达一楼比例 / down trips to floor 1
-PEAK_EVENING_RATIO_OTHER = 0.05  # 楼层间流动 / inter-floor movement
+# ============================================================
+# 3. 晚高峰参数 (Gaussian) / Evening Peak Parameters
+# ============================================================
+
+EVENING_INTENSITY = 1.0  # 晚高峰强度 / evening peak intensity
+EVENING_LOAD_MIN = 60  # 晚高峰负载下界 (kg)
+EVENING_LOAD_MAX = 150  # 晚高峰负载上界 (kg)
+EVENING_SIGMA_RATIO = 0.15  # 晚高峰标准差比 / time spread ratio
+
+EVENING_RATIO_ORIGIN1 = 0.90  # 一楼出发比例 / upward trips from floor 1
+EVENING_RATIO_DEST1 = 0.05  # 抵达一楼比例 / down trips to floor 1
+EVENING_RATIO_OTHER = 0.05  # 楼层间流动 / inter-floor movement
+
+# ============================================================
+# 4. 夜间平峰参数 (Uniform) / Night Off-Peak Parameters
+# ============================================================
+
+NIGHT_INTENSITY = 0.2  # 夜间平峰强度 / night off-peak intensity
+NIGHT_LOAD_MIN = 50  # 夜间平峰负载下界 (kg)
+NIGHT_LOAD_MAX = 110  # 夜间平峰负载上界 (kg)
+
+NIGHT_RATIO_ORIGIN1 = 0.45  # 一楼出发 (上行) / departures from floor 1
+NIGHT_RATIO_DEST1 = 0.45  # 抵达一楼 (下行) / arrivals to floor 1
+NIGHT_RATIO_OTHER = 0.10  # 楼层间往返 / inter-floor traffic
+
+# ============================================================
+# 兼容保留 / Backward-compatible aliases
+# ============================================================
+
+PEAK_INTENSITY = MORNING_INTENSITY
+PEAK_LOAD_MIN = MORNING_LOAD_MIN
+PEAK_LOAD_MAX = MORNING_LOAD_MAX
+PEAK_SIGMA_RATIO = MORNING_SIGMA_RATIO
+PEAK_MORNING_RATIO_ORIGIN1 = MORNING_RATIO_ORIGIN1
+PEAK_MORNING_RATIO_DEST1 = MORNING_RATIO_DEST1
+PEAK_MORNING_RATIO_OTHER = MORNING_RATIO_OTHER
+PEAK_EVENING_RATIO_ORIGIN1 = EVENING_RATIO_ORIGIN1
+PEAK_EVENING_RATIO_DEST1 = EVENING_RATIO_DEST1
+PEAK_EVENING_RATIO_OTHER = EVENING_RATIO_OTHER
+OFFPEAK_INTENSITY = DAY_INTENSITY
+OFFPEAK_LOAD_MIN = DAY_LOAD_MIN
+OFFPEAK_LOAD_MAX = DAY_LOAD_MAX
+OFFPEAK_RATIO_ORIGIN1 = DAY_RATIO_ORIGIN1
+OFFPEAK_RATIO_DEST1 = DAY_RATIO_DEST1
+OFFPEAK_RATIO_OTHER = DAY_RATIO_OTHER
 
 # ============================================================
 # 3. 时段定义 (小时:分钟) / Period Definitions (HH:MM)

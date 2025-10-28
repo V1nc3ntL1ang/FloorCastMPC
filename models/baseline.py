@@ -1,7 +1,7 @@
 import config as cfg
 from models.kinematics import travel_time
 from models.temporal import hold_time
-from models.energy import segment_energy
+from models.energy import segment_energy, standby_energy
 
 
 def assign_requests_baseline(requests, elevators):
@@ -140,11 +140,12 @@ def simulate_baseline(elevators):
             travel_duration = travel_time(load, start_floor, end_floor)
             direction = "up" if end_floor > start_floor else "down"
             distance = abs(end_floor - start_floor) * cfg.BUILDING_FLOOR_HEIGHT
-            energy_used = segment_energy(load, distance, direction)
+            energy_motion = segment_energy(load, distance, direction)
+            energy_idle = standby_energy(travel_duration)
 
             current_time += travel_duration
             total_time += travel_duration
-            total_energy += energy_used
+            total_energy += energy_motion + energy_idle
             current_floor = end_floor
 
             pull_ready_requests()
@@ -159,18 +160,35 @@ def simulate_baseline(elevators):
         def process_stop(boarders, leavers):
             """Handle dwell time, boarding, and alighting at the current floor."""
 
-            nonlocal current_time, total_time
+            nonlocal current_time, total_time, total_energy
 
             if not boarders and not leavers:
                 return
 
+            leaving_weight = sum(
+                req.load for req in leavers if req in onboard
+            )  # weight exiting
+
+            # Ensure capacity compliance before boarding new entities.
+            post_leave_load = max(0.0, current_load() - leaving_weight)
+            remaining_capacity = max(0.0, cfg.ELEVATOR_CAPACITY - post_leave_load)
+
+            if boarders:
+                admitted = []
+                for req in boarders:
+                    if req.load <= remaining_capacity + 1e-9:
+                        admitted.append(req)
+                        remaining_capacity -= req.load
+                    # Requests beyond capacity remain in the waiting queue.
+                boarders = admitted
+
             arrive_time = current_time
             boarding_weight = sum(r.load for r in boarders)
-            leaving_weight = sum(r.load for r in leavers)
             dwell = hold_time(boarding_weight, leaving_weight)
 
             current_time += dwell
             total_time += dwell
+            total_energy += standby_energy(dwell)
 
             for req in leavers:
                 if req in onboard:
@@ -201,7 +219,10 @@ def simulate_baseline(elevators):
                     break
                 # Fast-forward to the next arrival / 若无请求待服务，则跳转到下一到达时刻
                 next_req = pending.pop(0)
-                current_time = max(current_time, next_req.arrival_time)
+                if next_req.arrival_time > current_time:
+                    idle_duration = next_req.arrival_time - current_time
+                    total_energy += standby_energy(idle_duration)
+                    current_time = next_req.arrival_time
                 waiting.append(next_req)
                 pull_ready_requests()
 
@@ -313,4 +334,8 @@ def simulate_baseline(elevators):
         elev.queue = []
         elev.served_requests = service_log
 
-    return total_time, total_energy
+    all_served = []
+    for elev in elevators:
+        all_served.extend(elev.served_requests)
+
+    return total_time, total_energy, all_served
