@@ -258,18 +258,16 @@ The elevator dispatching problem aims to minimize passenger waiting time, riding
 -   **Reproducibility**  
     A global seed with period-specific offsets ensures reproducible draws per period.
 
----
+-   **Time stamps and derived metrics**
 
-### Time stamps and derived metrics
+    -   **\(T_c^{\mathrm{arr}}\)** — passenger arrival (start waiting)
+    -   **\(T_c^{\mathrm{elev}}\)** — elevator arrival at origin (before boarding)
+    -   **\(T_c^{\mathrm{pick}}\)** — boarding complete (origin dwell end)
+    -   **\(T_c^{\mathrm{dest}}\)** — destination arrival (drop-off instantaneous)
 
--   **\(T_c^{\mathrm{arr}}\)** — passenger arrival (start waiting)
--   **\(T_c^{\mathrm{elev}}\)** — elevator arrival at origin (before boarding)
--   **\(T_c^{\mathrm{pick}}\)** — boarding complete (origin dwell end)
--   **\(T_c^{\mathrm{dest}}\)** — destination arrival (drop-off instantaneous)
-
-**Queue wait:** \(W_c^{\mathrm{Q}} = T_c^{\mathrm{elev}} - T_c^{\mathrm{arr}}\)  
-**In-cab time:** \(W_c^{\mathrm{cab}} = T_c^{\mathrm{dest}} - T_c^{\mathrm{elev}}\)  
-**Total:** \(W_c^{\mathrm{tot}} = T_c^{\mathrm{dest}} - T_c^{\mathrm{arr}} = W_c^{\mathrm{Q}} + W_c^{\mathrm{cab}}\)
+    **Queue wait:** \(W_c^{\mathrm{Q}} = T_c^{\mathrm{elev}} - T_c^{\mathrm{arr}}\)  
+    **In-cab time:** \(W_c^{\mathrm{cab}} = T_c^{\mathrm{dest}} - T_c^{\mathrm{elev}}\)  
+    **Total:** \(W_c^{\mathrm{tot}} = T_c^{\mathrm{dest}} - T_c^{\mathrm{arr}} = W_c^{\mathrm{Q}} + W_c^{\mathrm{cab}}\)
 
 ##### Kinematics Model
 
@@ -559,41 +557,3 @@ $$
 ## Conclusion
 
 ## Reference
-
-# Optimization Method Course Assignment Template
-
-Name, Student ID, Major and Class
-Name, Student ID, Major and Class
-Name, Student ID, Major and Class
-Name, Student ID, Major and Class
-Name, Student ID, Major and Class
-Abstract: （不超过 250 个英文单词，提交时删除该提示内容）
-
-Keywords: keyword1; keyword2; keyword3; (请选择 3-7 个关键词，提交时删除该提示内容)
-
-1. Introduction
-
-1.1 Literature review
-
-1.2 Contribution of this article
-
-1.3 Organization of this article
-
-2. Methodology (including explanation of data and assumptions)
-   （该部分内容按照写作需要可以分小点撰写，以使条例更清晰，即：2.1 2.2 2.3…，也可以不分。提交时删除该内容）
-   2.1
-
-2.2
-
-3. Result and discussion
-   （该部分内容按照写作需要可以分小点撰写，以使条例更清晰，即：3.1 3.2 3.3…，也可以不分。提交时删除该内容）
-   3.1
-
-3.2
-
-4. Conclusion
-
-Reference
-[1] Author1, Author2. Title. Journal, year, volume: page (or id number).
-[2] M. Waseem, M. Ahmad, A. Parveen, M. Suhaib. Battery technologies and functionality of battery management system for EVs: Current status, key challenges, and future prospectives. Journal Power Sources, 2023, 580: 233349.
-[3] Z. Wei, K. Liu, X. Liu, et al. Multilevel Data-Driven Battery Management: From Internal Sensing to Big Data Utilization. IEEE Transactions on Transportation Electrification, 2023, 9: 4805–4823.

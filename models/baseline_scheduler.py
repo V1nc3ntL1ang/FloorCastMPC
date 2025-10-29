@@ -4,7 +4,7 @@ from models.temporal import hold_time
 from models.energy import segment_energy, standby_energy
 
 
-def assign_requests_baseline(requests, elevators):
+def assign_requests_greedy(requests, elevators):
     """Assign requests greedily considering earliest availability for each elevator."""
 
     # Reset assignment containers on each elevator state.
@@ -94,7 +94,7 @@ def assign_requests_baseline(requests, elevators):
         projected_floor[best_elevator.id] = req.destination
 
 
-def simulate_baseline(elevators):
+def simulate_dispatch(elevators):
     """Simulate greedy single-elevator batches and return (total_time, total_energy)."""
 
     total_time = 0.0
