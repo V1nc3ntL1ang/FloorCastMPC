@@ -5,99 +5,49 @@ from models.energy import segment_energy, standby_energy
 
 
 def assign_requests_greedy(requests, elevators):
-    """Assign requests greedily considering earliest availability / 按最早可用时间贪婪分配请求。"""
+    """
+    Simple greedy dispatcher: keep queues balanced and prefer nearer cars.
+    将请求按等待队列长度 + 距离的贪婪策略分配给电梯。
 
-    # Reset assignment containers / 重置每部电梯的任务容器。
-    for e in elevators:
-        e.queue = []
-        e.served_requests = []
+    基线假设：
+      - 分配时只知道 origin（厅呼），不知道 destination（轿厢呼）。
+      - 因此只用 origin 更新电梯的“预估位置”，不偷看目的楼层。
+    """
+    if not elevators:
+        return
 
-    # Track projected state after scheduling / 记录排程后的预计状态。
-    projected_floor = {e.id: e.floor for e in elevators}
-    projected_time = {e.id: 0.0 for e in elevators}
-    num_elevators = len(elevators)
-    tie_cursor = 0  # ring pointer for tiebreaks / 环状指针用于平局处理
-    eps = 1e-6
+    for elev in elevators:
+        elev.queue = []
+        elev.served_requests = []
+        elev._forecast_floor = elev.floor
 
     for req in sorted(requests, key=lambda r: r.arrival_time):
-        if not elevators:
-            break
-
-        candidates = []
-        best_ready_time = None
-
-        for idx, elev in enumerate(elevators):
-            available_time = projected_time[elev.id]
-            current_floor = projected_floor[elev.id]
-
-            travel_duration = travel_time(0.0, current_floor, req.origin)
-            arrival_at_origin = available_time + travel_duration
-            ready_time = max(arrival_at_origin, req.arrival_time)
-
-            candidates.append(
-                {
-                    "idx": idx,
-                    "elevator": elev,
-                    "ready_time": ready_time,
-                    "arrival_at_origin": arrival_at_origin,
-                    "available_time": available_time,
-                }
-            )
-
-            if best_ready_time is None or ready_time < best_ready_time:
-                best_ready_time = ready_time
-
-        if best_ready_time is None:
-            continue
-
-        best_list = [
-            c for c in candidates if abs(c["ready_time"] - best_ready_time) <= eps
-        ]
-
-        if not best_list:
-            continue
-
-        chosen = None
-
-        if len(best_list) == 1:
-            chosen = best_list[0]
-        else:
-            order = [
-                ((tie_cursor + shift) % num_elevators) for shift in range(num_elevators)
-            ]
-            for idx_order in order:
-                match = next((c for c in best_list if c["idx"] == idx_order), None)
-                if match is not None:
-                    chosen = match
-                    tie_cursor = (idx_order + 1) % num_elevators
-                    break
-        if chosen is None:
-            chosen = best_list[0]
-
-        best_elevator = chosen["elevator"]
-        best_elevator.queue.append(req)
-        best_elevator.served_requests.append(req)
-
-        available_time = projected_time[best_elevator.id]
-        current_floor = projected_floor[best_elevator.id]
-        travel_duration = travel_time(0.0, current_floor, req.origin)
-        arrival_at_origin = available_time + travel_duration
-        ready_time = max(arrival_at_origin, req.arrival_time)
-
-        dwell = hold_time(req.load, 0.0)
-        departure_time = ready_time + dwell
-        finish_time = departure_time + travel_time(
-            req.load, req.origin, req.destination
+        best = min(
+            elevators,
+            key=lambda elev: (
+                len(elev.queue),
+                abs(elev._forecast_floor - req.origin),
+                elev.id,
+            ),
         )
+        best.queue.append(req)
 
-        projected_time[best_elevator.id] = finish_time
-        projected_floor[best_elevator.id] = req.destination
+        # ★ 关键：只用 origin 更新，不用 destination
+        best._forecast_floor = req.origin
+
+    for elev in elevators:
+        if hasattr(elev, "_forecast_floor"):
+            delattr(elev, "_forecast_floor")
 
 
 def simulate_dispatch(elevators):
     """
     Simulate greedy batches per elevator and return metrics /
     按电梯模拟贪婪批处理并返回统计量 (total_time, total_energy, served_requests, emptyload_energy)。
+
+    经典策略特性：
+      - 方向优先（collective control）：当前有乘客时，沿一个方向把车内和沿途同向请求都顺路服务完。
+      - 同层多上多下：在同一停靠点，可以同时处理多个上客和下客，停靠时间按总上下客载重计算。
     """
 
     total_time = 0.0
@@ -116,6 +66,7 @@ def simulate_dispatch(elevators):
             req.dropoff_time = None
             req.origin_arrival_time = None
             req.destination_arrival_time = None
+
         waiting = (
             []
         )  # 已到达但尚未上车 / arrived requests waiting on their origin floor
@@ -124,7 +75,6 @@ def simulate_dispatch(elevators):
 
         def pull_ready_requests():
             """Move arrived pending requests into the waiting list / 将已到达请求移入等待队列。"""
-
             nonlocal pending, waiting
             while pending and pending[0].arrival_time <= current_time:
                 waiting.append(pending.pop(0))
@@ -134,7 +84,6 @@ def simulate_dispatch(elevators):
 
         def travel_between(start_floor, end_floor):
             """Advance time and energy for a trip / 更新跨层行程的时间与能耗。"""
-
             nonlocal current_floor, current_time, total_time, total_energy, emptyload_energy
 
             if start_floor == end_floor:
@@ -165,44 +114,54 @@ def simulate_dispatch(elevators):
             return "idle"
 
         def process_stop(boarders, leavers):
-            """Handle dwell time, boarding, and alighting / 处理开门、上客与下客。"""
-
+            """
+            Handle dwell time, boarding, and alighting /
+            处理同一停靠点的开门、上下客：
+              - 支持多个乘客同时上车和下车；
+              - 停靠时间由上下客总载重通过 hold_time 计算。
+            """
             nonlocal current_time, total_time, total_energy
 
             if not boarders and not leavers:
                 return
 
-            leaving_weight = sum(
-                req.load for req in leavers if req in onboard
-            )  # weight exiting / 下客重量
+            # 计算下客总载重（只考虑车内已有乘客）
+            leaving_weight = sum(req.load for req in leavers if req in onboard)
 
-            # Ensure capacity compliance before boarding / 确保上客前满足载荷限制。
+            # 下客后当前载重 / remaining capacity
             post_leave_load = max(0.0, current_load() - leaving_weight)
             remaining_capacity = max(0.0, cfg.ELEVATOR_CAPACITY - post_leave_load)
 
+            # 容量约束：能上的先上，剩下的留在 waiting
             if boarders:
                 admitted = []
                 for req in boarders:
                     if req.load <= remaining_capacity + 1e-9:
                         admitted.append(req)
                         remaining_capacity -= req.load
-                    # Requests beyond capacity remain waiting / 超载请求保留在等待队列。
                 boarders = admitted
 
-            arrive_time = current_time
+            arrive_time = current_time  # 电梯到达这一层的时间（开门前）
             boarding_weight = sum(r.load for r in boarders)
-            dwell = hold_time(boarding_weight, leaving_weight) if boarders else 0.0
+
+            # 关键改动：只要有上或下，就产生停靠时间
+            if boarders or leavers:
+                dwell = hold_time(boarding_weight, leaving_weight)
+            else:
+                dwell = 0.0
 
             current_time += dwell
             total_time += dwell
             total_energy += standby_energy(dwell)
 
+            # 处理下客：他们的 destination_arrival_time = 电梯到达时刻
             for req in leavers:
                 if req in onboard:
                     onboard.remove(req)
                 req.destination_arrival_time = arrive_time
                 req.dropoff_time = current_time
 
+            # 处理上客：他们的 origin_arrival_time = 电梯到达时刻
             for req in boarders:
                 if req in waiting:
                     waiting.remove(req)
@@ -210,6 +169,7 @@ def simulate_dispatch(elevators):
                 req.pickup_time = current_time
                 if req not in service_log:
                     service_log.append(req)
+                # 如果上车就到达目的楼层（origin == destination == current_floor）
                 if req.destination == current_floor:
                     req.dropoff_time = current_time
                     req.destination_arrival_time = arrive_time
@@ -218,6 +178,7 @@ def simulate_dispatch(elevators):
 
             pull_ready_requests()
 
+        # ===== 主循环：直到该电梯的所有请求都服务完 =====
         while pending or waiting or onboard:
             pull_ready_requests()
 
@@ -236,7 +197,7 @@ def simulate_dispatch(elevators):
             if not waiting and not onboard:
                 continue
 
-            # If elevator is idle, travel to the next closest ready origin.
+            # 如果电梯当前为空，从 waiting 中选一个最近 & 最早到达的 origin 过去接
             if not onboard:
                 target_req = min(
                     waiting,
@@ -245,7 +206,7 @@ def simulate_dispatch(elevators):
 
                 travel_between(current_floor, target_req.origin)
 
-                # Determine who can board at this floor.
+                # 当前楼层所有已到达的请求
                 ready_here = [
                     r
                     for r in waiting
@@ -254,11 +215,14 @@ def simulate_dispatch(elevators):
                 if not ready_here:
                     continue
 
+                # 选择一个“主请求”，以它的 destination 决定方向
                 primary = min(
                     ready_here,
                     key=lambda r: (r.arrival_time, abs(r.destination - current_floor)),
                 )
                 direction = request_direction(primary, current_floor)
+
+                # 同一层、同向（或目的层即当前层）的请求一起上车 → 多上
                 boarders = [
                     r
                     for r in ready_here
@@ -267,11 +231,12 @@ def simulate_dispatch(elevators):
 
                 process_stop(boarders, [])
 
+                # 如果这波上客之后没有有效行进方向（全是 idle），则回到主循环重新决策
                 if direction == "idle" or not onboard:
                     continue
 
             else:
-                # Determine travel direction from onboard passengers.
+                # 根据车内乘客的目的楼层决定行进方向
                 dirs = {
                     request_direction(req, current_floor)
                     for req in onboard
@@ -279,14 +244,17 @@ def simulate_dispatch(elevators):
                 }
                 direction = dirs.pop() if dirs else "idle"
                 if direction == "idle":
-                    # All passengers have reached their destinations (edge case)
+                    # 理论上不会太常见：所有车内乘客目的楼层都等于当前层
                     process_stop([], onboard[:])
                     continue
 
-            # Serve all requests in the chosen direction before considering others.
+            # ===== 顺路接人：沿当前方向跑完一趟 =====
             while onboard:
                 pull_ready_requests()
 
+                # 根据当前方向，找“顺路”的下一层：
+                #   - 车内乘客的目的楼层；
+                #   - 同方向的、已到达的 waiting 乘客的 origin 楼层。
                 if direction == "up":
                     candidate_floors = [
                         req.destination
@@ -319,9 +287,13 @@ def simulate_dispatch(elevators):
                 if next_floor is None:
                     break
 
+                # 行驶到下一站（可能是有人下车的楼层，也可能是顺路去接人的 origin）
                 travel_between(current_floor, next_floor)
 
+                # 多下：所有目的楼层是当前层的车内乘客一起下车
                 leavers = [req for req in onboard if req.destination == current_floor]
+
+                # 多上：当前层所有同向（或目的即当前层）的 waiting 乘客一起上车
                 ready_here = [
                     r
                     for r in waiting
@@ -335,8 +307,9 @@ def simulate_dispatch(elevators):
 
                 process_stop(boarders, leavers)
 
-            # After serving this direction, the loop reiterates to pick the next batch.
+            # 当前方向服务结束，回到主循环重新决定下一批。
 
+        # 更新电梯最终状态
         elev.floor = current_floor
         elev.queue = []
         elev.served_requests = service_log

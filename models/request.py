@@ -1,7 +1,11 @@
 import random
+
 import config as cfg
-from models.utils import rand_other_pair, rand_upper_floor, validate_ratios
+from models.destination import sample_destination
+from models.utils import rand_upper_floor, validate_ratios
 from models.variables import Request
+
+LOBBY_FLOOR = cfg.LOBBY_FLOOR
 
 
 # ------------------------------
@@ -12,6 +16,7 @@ def generate_offpeak_uniform(
     start_time: float,
     end_time: float,
     *,
+    weekday: int = 0,
     intensity: float = 1.0,
     ratio_origin1: float = 0.5,
     ratio_dest1: float = 0.5,
@@ -37,15 +42,20 @@ def generate_offpeak_uniform(
     reqs = []
     for i in range(n):
         u = random.random()
+        arrival = random.uniform(start_time, end_time)
         if u < c1:
-            origin, destination = 1, rand_upper_floor(cfg.BUILDING_FLOORS)
+            origin = LOBBY_FLOOR
+            destination = sample_destination(weekday, arrival, origin)
         elif u < c2:
-            origin, destination = rand_upper_floor(cfg.BUILDING_FLOORS), 1
+            origin = rand_upper_floor(cfg.BUILDING_FLOORS)
+            destination = LOBBY_FLOOR
         else:
-            origin, destination = rand_other_pair(cfg.BUILDING_FLOORS)
+            origin = rand_upper_floor(cfg.BUILDING_FLOORS)
+            destination = sample_destination(
+                weekday, arrival, origin, exclude={LOBBY_FLOOR}
+            )
 
         load = random.uniform(load_min, load_max)
-        arrival = random.uniform(start_time, end_time)
         reqs.append(Request(i + 1, origin, destination, load, arrival))
 
     return reqs
@@ -59,6 +69,7 @@ def generate_peak_gaussian(
     start_time: float,
     end_time: float,
     *,
+    weekday: int = 0,
     mu_time: float,
     sigma_ratio: float = 0.05,
     intensity: float = 1.0,
@@ -85,22 +96,29 @@ def generate_peak_gaussian(
     reqs = []
     for i in range(n):
         u = random.random()
+        t = random.gauss(mu_time, sigma)
+        arrival = min(max(t, start_time), end_time)
         if u < c1:
-            origin, destination = 1, rand_upper_floor(cfg.BUILDING_FLOORS)
+            origin = LOBBY_FLOOR
+            destination = sample_destination(weekday, arrival, origin)
         elif u < c2:
-            origin, destination = rand_upper_floor(cfg.BUILDING_FLOORS), 1
+            origin = rand_upper_floor(cfg.BUILDING_FLOORS)
+            destination = LOBBY_FLOOR
         else:
-            origin, destination = rand_other_pair(cfg.BUILDING_FLOORS)
+            origin = rand_upper_floor(cfg.BUILDING_FLOORS)
+            destination = sample_destination(
+                weekday, arrival, origin, exclude={LOBBY_FLOOR}
+            )
 
         load = random.uniform(load_min, load_max)
-        t = random.gauss(mu_time, sigma)
-        t = min(max(t, start_time), end_time)
-        reqs.append(Request(i + 1, origin, destination, load, t))
+        reqs.append(Request(i + 1, origin, destination, load, arrival))
 
     return reqs
 
 
-def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
+def generate_requests_weekday(
+    total_requests: int, *, seed_shift: int = 0, weekday: int = 0
+):
     """Simulate a full-day demand profile / 生成完整一天的乘梯请求序列。"""
     seed_base = cfg.SIM_RANDOM_SEED + seed_shift
     total_morning = int(total_requests * cfg.WEEKDAY_PEAK_MORNING_RATIO)
@@ -115,6 +133,7 @@ def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
         mu_time=cfg.h2s(cfg.WEEKDAY_PEAK_MORNING_MU),
         sigma_ratio=cfg.WEEKDAY_MORNING_SIGMA_RATIO,
         intensity=cfg.WEEKDAY_MORNING_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKDAY_MORNING_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKDAY_MORNING_RATIO_DEST1,
         ratio_other=cfg.WEEKDAY_MORNING_RATIO_OTHER,
@@ -129,6 +148,7 @@ def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
         start_time=cfg.h2s(*cfg.WEEKDAY_OFFPEAK_DAY_START),
         end_time=cfg.h2s(*cfg.WEEKDAY_OFFPEAK_DAY_END),
         intensity=cfg.WEEKDAY_DAY_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKDAY_DAY_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKDAY_DAY_RATIO_DEST1,
         ratio_other=cfg.WEEKDAY_DAY_RATIO_OTHER,
@@ -145,6 +165,7 @@ def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
         mu_time=cfg.h2s(cfg.WEEKDAY_PEAK_EVENING_MU),
         sigma_ratio=cfg.WEEKDAY_EVENING_SIGMA_RATIO,
         intensity=cfg.WEEKDAY_EVENING_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKDAY_EVENING_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKDAY_EVENING_RATIO_DEST1,
         ratio_other=cfg.WEEKDAY_EVENING_RATIO_OTHER,
@@ -159,6 +180,7 @@ def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
         start_time=cfg.h2s(*cfg.WEEKDAY_OFFPEAK_NIGHT_START),
         end_time=cfg.h2s(*cfg.WEEKDAY_OFFPEAK_NIGHT_END),
         intensity=cfg.WEEKDAY_NIGHT_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKDAY_NIGHT_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKDAY_NIGHT_RATIO_DEST1,
         ratio_other=cfg.WEEKDAY_NIGHT_RATIO_OTHER,
@@ -178,7 +200,9 @@ def generate_requests_weekday(total_requests: int, *, seed_shift: int = 0):
     return requests
 
 
-def generate_requests_weekend(total_requests: int, *, seed_shift: int = 0):
+def generate_requests_weekend(
+    total_requests: int, *, seed_shift: int = 0, weekday: int = 6
+):
     """Simulate a weekend profile with day/night uniform segments / 生成周末日请求。"""
     seed_base = cfg.SIM_RANDOM_SEED + seed_shift
     total_day = int(total_requests * cfg.WEEKEND_DAY_RATIO)
@@ -189,6 +213,7 @@ def generate_requests_weekend(total_requests: int, *, seed_shift: int = 0):
         start_time=cfg.h2s(*cfg.WEEKEND_DAY_START),
         end_time=cfg.h2s(*cfg.WEEKEND_DAY_END),
         intensity=cfg.WEEKEND_DAY_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKEND_DAY_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKEND_DAY_RATIO_DEST1,
         ratio_other=cfg.WEEKEND_DAY_RATIO_OTHER,
@@ -203,6 +228,7 @@ def generate_requests_weekend(total_requests: int, *, seed_shift: int = 0):
         start_time=cfg.h2s(*cfg.WEEKEND_NIGHT_START),
         end_time=cfg.h2s(*cfg.WEEKEND_NIGHT_END),
         intensity=cfg.WEEKEND_NIGHT_INTENSITY,
+        weekday=weekday,
         ratio_origin1=cfg.WEEKEND_NIGHT_RATIO_ORIGIN1,
         ratio_dest1=cfg.WEEKEND_NIGHT_RATIO_DEST1,
         ratio_other=cfg.WEEKEND_NIGHT_RATIO_OTHER,

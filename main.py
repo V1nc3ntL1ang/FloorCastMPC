@@ -148,7 +148,7 @@ def main() -> None:
     results: List[Dict[str, object]] = []
 
     for day_index, (day_label, day_type) in enumerate(DAY_SCHEDULE):
-        seed_shift = day_index * 1000
+        seed_shift = day_index * 114514
         if day_type == "weekday":
             requests = generate_requests_weekday(
                 cfg.WEEKDAY_TOTAL_REQUESTS, seed_shift=seed_shift

@@ -7,10 +7,10 @@ from models.energy import segment_energy
 from models.kinematics import travel_time
 
 
-WAIT_PENALTY_SCALE = getattr(cfg, "WAIT_PENALTY_SCALE", 60.0)
-WAIT_PENALTY_EXPONENT = getattr(cfg, "WAIT_PENALTY_EXPONENT", 1.5)
-WAIT_PENALTY_THRESHOLD = getattr(cfg, "WAIT_PENALTY_THRESHOLD", 0.0)
-EMPTYLOAD_PENALTY_MULTIPLIER = getattr(cfg, "EMPTYLOAD_PENALTY_MULTIPLIER", 2.0)
+WAIT_PENALTY_SCALE = cfg.WAIT_PENALTY_SCALE
+WAIT_PENALTY_EXPONENT = cfg.WAIT_PENALTY_EXPONENT
+WAIT_PENALTY_THRESHOLD = cfg.WAIT_PENALTY_THRESHOLD
+EMPTYLOAD_PENALTY_MULTIPLIER = cfg.EMPTYLOAD_PENALTY_MULTIPLIER
 
 
 @dataclass
@@ -213,7 +213,7 @@ def compute_theoretical_limit(
         direction = "up" if destination > origin else "down"
         min_running_energy += segment_energy(load, distance, direction)
 
-    elevator_count = max(int(getattr(cfg, "ELEVATOR_COUNT", 1)), 1)
+    elevator_count = max(int(cfg.ELEVATOR_COUNT), 1)
     service_rate = max(float(elevator_count), 1e-9)
     flow_lb = _srpt_flow_lb_speed_c(jobs, elevator_count)
     total_service = sum(s for _, s in jobs)

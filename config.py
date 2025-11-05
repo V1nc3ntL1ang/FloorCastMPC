@@ -3,12 +3,41 @@
 # ============================================================
 
 from models.utils import duration_seconds, h2s
+from models.floor_config import (
+    BUILDING_FLOOR_HEIGHT,
+    BUILDING_FLOORS,
+    HOT_FLOORS_EVENING,
+    HOT_FLOORS_LUNCH,
+    HOT_FLOORS_MORNING,
+    HOT_WEIGHTS_EVENING,
+    HOT_WEIGHTS_LUNCH,
+    HOT_WEIGHTS_MORNING,
+    LOBBY_FLOOR,
+    LUNCH_END,
+    LUNCH_START,
+    OFFICE_FLOOR_MAX,
+    OFFICE_FLOOR_MIN,
+    WEEKDAY_OFFPEAK_DAY_END,
+    WEEKDAY_OFFPEAK_DAY_START,
+    WEEKDAY_OFFPEAK_NIGHT_END,
+    WEEKDAY_OFFPEAK_NIGHT_START,
+    WEEKDAY_PEAK_EVENING_END,
+    WEEKDAY_PEAK_EVENING_START,
+    WEEKDAY_PEAK_MORNING_END,
+    WEEKDAY_PEAK_MORNING_START,
+    WEEKEND_DAY_END,
+    WEEKEND_DAY_START,
+    WEEKEND_NIGHT_END,
+    WEEKEND_NIGHT_START,
+)
+
+# Re-exported floor configuration lives in models.floor_config.
 
 # ------------------------
 # Building Parameters / 建筑物参数
 # ------------------------
-BUILDING_FLOORS = 15  # 总楼层数 / total number of floors
-BUILDING_FLOOR_HEIGHT = 3.5  # 单层高度 (m) / floor height in meters
+# Floor-related constants are imported from models.floor_config and remain
+# available here for backward compatibility (e.g., BUILDING_FLOORS, LOBBY_FLOOR).
 ELEVATOR_COUNT = 4  # 电梯数量 / number of elevators
 ELEVATOR_CAPACITY = 1200.0  # 额定载荷 (kg) / rated payload
 
@@ -200,6 +229,9 @@ WEEKDAY_PEAK_MORNING_END = (10, 30)  # 早高峰结束 / morning end
 
 WEEKDAY_OFFPEAK_DAY_START = (10, 30)  # 白天平峰开始 / daytime off-peak start
 WEEKDAY_OFFPEAK_DAY_END = (17, 0)  # 白天平峰结束 / daytime off-peak end
+
+LUNCH_START = (11, 30)  # 午餐时段开始 / lunch period start
+LUNCH_END = (13, 30)  # 午餐时段结束 / lunch period end
 
 WEEKDAY_PEAK_EVENING_START = (17, 0)  # 晚高峰开始 / evening start
 WEEKDAY_PEAK_EVENING_END = (21, 0)  # 晚高峰结束 / evening end

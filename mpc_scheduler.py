@@ -14,8 +14,8 @@ from models.kinematics import travel_time
 from models.temporal import hold_time
 
 
-MPC_LOOKAHEAD_WINDOW = getattr(cfg, "MPC_LOOKAHEAD_WINDOW", 240.0)
-MPC_MAX_BATCH = getattr(cfg, "MPC_MAX_BATCH", 12)
+MPC_LOOKAHEAD_WINDOW = cfg.MPC_LOOKAHEAD_WINDOW
+MPC_MAX_BATCH = cfg.MPC_MAX_BATCH
 
 
 @dataclass
