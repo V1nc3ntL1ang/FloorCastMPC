@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import heapq
 import math
 
-import config as cfg
+from models import config as cfg
 from models.energy import segment_energy
 from models.kinematics import travel_time
 
@@ -20,6 +20,7 @@ class PassengerMetrics:
     total_in_cab_time: float
     wait_penalty_total: float
     served_count: int
+    zero_wait_count: int = 0
 
 
 @dataclass
@@ -71,6 +72,7 @@ def summarize_passenger_metrics(served_requests) -> PassengerMetrics:
     total_in_cab_time = 0.0
     total_wait_penalty = 0.0
     served_count = 0
+    zero_wait_count = 0
 
     for req in served_requests:
         arr = getattr(req, "arrival_time", None)
@@ -89,6 +91,8 @@ def summarize_passenger_metrics(served_requests) -> PassengerMetrics:
             total_wait_time += wait
             total_wait_penalty += wait_penalty(wait)
             total_in_cab_time += max(dest_arrival - origin_arrival, 0.0)
+            if wait <= 1e-9:
+                zero_wait_count += 1
         else:
             total_in_cab_time += trip_total
 
@@ -98,6 +102,7 @@ def summarize_passenger_metrics(served_requests) -> PassengerMetrics:
         total_in_cab_time=total_in_cab_time,
         wait_penalty_total=total_wait_penalty,
         served_count=served_count,
+        zero_wait_count=zero_wait_count,
     )
 
 
@@ -108,6 +113,7 @@ def compute_objective(
     running_energy: float,
     *,
     wait_penalty_value: float | None = None,
+    zero_wait_count: int = 0,
 ) -> ObjectiveBreakdown:
     """
     Compute weighted losses for waiting, riding, and energy usage /
@@ -124,6 +130,10 @@ def compute_objective(
         wait_penalty(wait_time) if wait_penalty_value is None else wait_penalty_value
     )
     wait_cost = cfg.WEIGHT_TIME * wait_penalty_value
+    # 奖励：当等待时间为 0 的请求个数为 zero_wait_count 时，减少一部分等待成本
+    if zero_wait_count > 0 and cfg.ZERO_WAIT_BONUS > 0.0:
+        bonus = cfg.ZERO_WAIT_BONUS * float(zero_wait_count)
+        wait_cost = max(0.0, wait_cost - bonus)
     ride_cost = cfg.WEIGHT_TIME * in_cab_time
     running_energy_cost = cfg.WEIGHT_ENERGY * running_energy
     extra_multiplier = max(EMPTYLOAD_PENALTY_MULTIPLIER - 1.0, 0.0)

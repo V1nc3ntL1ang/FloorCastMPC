@@ -1,5 +1,5 @@
 import math
-import config as cfg
+from models import config as cfg
 from models.kinematics import vmax_up, vmax_down, acc as accel, dec as decel
 
 

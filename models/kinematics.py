@@ -1,5 +1,5 @@
 import math
-import config as cfg
+from models import config as cfg
 
 
 def vmax_up(load):

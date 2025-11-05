@@ -1,4 +1,4 @@
-import config as cfg
+from models import config as cfg
 
 
 def hold_time(boarding_weight, alighting_weight):

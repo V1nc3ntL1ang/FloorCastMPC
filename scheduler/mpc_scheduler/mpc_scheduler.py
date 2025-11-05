@@ -8,14 +8,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
 
-import config as cfg
+from models import config as cfg
 from models.energy import segment_energy, standby_energy
 from models.kinematics import travel_time
 from models.temporal import hold_time
+from scheduler.mpc_scheduler.prediction_api import (
+    is_ready as _predictor_ready,
+    predict_dest_distribution as _predict_distribution,
+)
 
 
 MPC_LOOKAHEAD_WINDOW = cfg.MPC_LOOKAHEAD_WINDOW
 MPC_MAX_BATCH = cfg.MPC_MAX_BATCH
+SECONDS_PER_DAY = 24 * 3600.0
+DEST_TOP_K = 3
 
 
 @dataclass
@@ -30,6 +36,7 @@ def assign_requests_mpc(
     *,
     lookahead_window: float | None = None,
     max_batch: int | None = None,
+    weekday: int | None = None,
 ) -> None:
     """
     Assign requests using a rolling-horizon heuristic /
@@ -84,7 +91,9 @@ def assign_requests_mpc(
         for idx in candidate_indices:
             req = unassigned[idx]
             for elev_idx, elev in enumerate(elevators):
-                estimate = _estimate_incremental_cost(plans[elev.id], req)
+                estimate = _estimate_incremental_cost(
+                    plans[elev.id], req, weekday=weekday
+                )
                 if estimate is None:
                     continue
                 cost, finish_time, passenger_time = estimate
@@ -100,7 +109,7 @@ def assign_requests_mpc(
             target_index = next(
                 (i for i, e in enumerate(elevators) if e.id == target_id), 0
             )
-            estimate = _estimate_incremental_cost(plans[target_id], req)
+            estimate = _estimate_incremental_cost(plans[target_id], req, weekday=weekday)
             finish_time = plans[target_id].time
             if estimate is not None:
                 finish_time = estimate[1]
@@ -140,13 +149,62 @@ def assign_requests_mpc(
 
 
 def _estimate_incremental_cost(
-    plan: _PlanState, request: object
+    plan: _PlanState, request: object, *, weekday: int | None = None
 ) -> Tuple[float, float, float] | None:
-    """Return (total_cost, finish_time, passenger_time) / 返回追加请求后的成本和完成时间。"""
+    """Return expected (cost, finish_time, passenger_time) under predicted destinations."""
+    candidates = _destination_candidates(request, weekday)
+    if not candidates:
+        return None
+
+    expected_cost = 0.0
+    expected_finish = 0.0
+    expected_passenger = 0.0
+
+    for destination, prob in candidates:
+        cost, finish_time, passenger_time = _cost_for_destination(plan, request, destination)
+        expected_cost += prob * cost
+        expected_finish += prob * finish_time
+        expected_passenger += prob * passenger_time
+
+    return expected_cost, expected_finish, expected_passenger
+
+
+def _destination_candidates(request: object, weekday: int | None) -> List[Tuple[int, float]]:
+    origin = request.origin
+    if _predictor_ready():
+        weekday_idx = 0 if weekday is None else int(weekday)
+        time_s = float(request.arrival_time % SECONDS_PER_DAY)
+        try:
+            dist = _predict_distribution(
+                origin,
+                time_s,
+                weekday_idx,
+                exclude_origin=True,
+            )
+        except Exception:
+            dist = {}
+
+        if dist:
+            items = sorted(dist.items(), key=lambda item: item[1], reverse=True)
+            top_items = items[:DEST_TOP_K] if DEST_TOP_K > 0 else items
+            total_prob = sum(prob for _, prob in top_items)
+            if total_prob > 0:
+                return [(int(dest), prob / total_prob) for dest, prob in top_items]
+
+    # Fallback: use the actual request destination with certainty
+    destination = int(getattr(request, "destination", origin))
+    if destination == origin:
+        # ensure we avoid zero-prob degenerate case by allowing same floor when necessary
+        return [(destination, 1.0)]
+    return [(destination, 1.0)]
+
+
+def _cost_for_destination(
+    plan: _PlanState, request: object, destination: int
+) -> Tuple[float, float, float]:
     current_floor = plan.floor
     available_time = plan.time
     origin = request.origin
-    destination = request.destination
 
     travel_to_origin = travel_time(0.0, current_floor, origin)
     arrival_at_origin = available_time + travel_to_origin
@@ -174,7 +232,6 @@ def _estimate_incremental_cost(
         energy += standby_energy(travel_to_dest)
 
     total_cost = cfg.WEIGHT_TIME * passenger_time + cfg.WEIGHT_ENERGY * energy
-    # Small bias for smoother schedules when tied / 在成本相同时加入轻微偏置以保持平滑。
     total_cost += 1e-6 * finish_time
 
     return total_cost, finish_time, passenger_time

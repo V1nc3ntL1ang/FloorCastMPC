@@ -2,16 +2,12 @@
 # Load-Aware Elevator Scheduling — Configuration (配置文件)
 # ============================================================
 
+import os
+
 from models.utils import duration_seconds, h2s
 from models.floor_config import (
     BUILDING_FLOOR_HEIGHT,
     BUILDING_FLOORS,
-    HOT_FLOORS_EVENING,
-    HOT_FLOORS_LUNCH,
-    HOT_FLOORS_MORNING,
-    HOT_WEIGHTS_EVENING,
-    HOT_WEIGHTS_LUNCH,
-    HOT_WEIGHTS_MORNING,
     LOBBY_FLOOR,
     LUNCH_END,
     LUNCH_START,
@@ -78,11 +74,14 @@ ENERGY_STANDBY_POWER = 500.0  # 待机功率 (W) / standby power draw
 # ------------------------
 SIM_TIME_HORIZON = 86400  # 仿真总时长 (s) / simulation horizon
 SIM_TIME_STEP = 1.0  # 时间步长 (s) / integration step
-SIM_RANDOM_SEED = 42  # 随机种子 / random seed
+SIM_RANDOM_SEED = 53  # 随机种子 / random seed
 WEEKDAY_TOTAL_REQUESTS = 5000  # 工作日每日请求总量 / weekday requests per day
 WEEKEND_TOTAL_REQUESTS = 3600  # 周末每日请求总量 / weekend requests per day
-SIM_ENABLE_PLOTS = False  # 是否输出图像 / enable plot export
-SIM_ENABLE_LOG = False  # 是否写入日志 / enable log export
+SIM_ENABLE_PLOTS = False  # 是否输出图像 (总开关) / master switch for plot export
+SIM_ENABLE_PLOTS_GLOBAL = False  # 导出全局楼层-时间图 / export per-elevator global plot
+SIM_ENABLE_PLOTS_TIME = False  # 导出时间轴视图 / export per-elevator time-axis plot
+SIM_ENABLE_PLOTS_DISTRIBUTION = True  # 导出等待分布图 / export wait distribution
+SIM_ENABLE_LOG = True  # 是否写入日志 / enable log export
 
 # ------------------------
 # Request Generation (Weekday Overview) / 工作日请求生成概览
@@ -104,14 +103,31 @@ WEEKDAY_PEAK_EVENING_MU_RATIO = 0.7  # 晚高峰中心 (占比) / evening peak p
 # ------------------------
 WEIGHT_TIME = 1  # 时间权重 / weight on total time
 WEIGHT_ENERGY = 0.0001  # 能耗权重 / weight on total energy
-WAIT_PENALTY_SCALE = 30.0  # 等待惩罚尺度 (s) / scale for wait-time penalty growth
-WAIT_PENALTY_EXPONENT = 2.5  # 等待惩罚指数 (>1) / curvature for wait-time penalty
+WAIT_PENALTY_SCALE = 150.0  # 等待惩罚尺度 (s) / scale for wait-time penalty growth
+WAIT_PENALTY_EXPONENT = 1.25  # 等待惩罚指数 (>1) / curvature for wait-time penalty
 WAIT_PENALTY_THRESHOLD = (
-    30.0  # 等待惩罚阈值 (s) / threshold before super-linear penalty kicks in
+    45.0  # 等待惩罚阈值 (s) / threshold before super-linear penalty kicks in
 )
 EMPTYLOAD_PENALTY_MULTIPLIER = (
     3.0  # 空载能耗惩罚倍数 / multiplier for empty-run energy weight
 )
+# 当请求等待时间为 0 时的奖励（降低的成本值）。单位与 cost 一致，建议取小值。
+ZERO_WAIT_BONUS = 5.00
+
+# ------------------------
+# Online learning controls / 在线学习控制
+# ------------------------
+ONLINE_LEARNING_ENABLE = False
+ONLINE_LEARNING_DATA_DIR = os.path.join("results", "online_learning")
+ONLINE_LEARNING_TRAIN_SCRIPT = "train_destination_predictor.py"
+ONLINE_LEARNING_SAVE_MODEL_PATH = os.path.join(
+    "results", "predict_model", "dest_model_final.pkl"
+)
+ONLINE_LEARNING_LOAD_MODEL_PATH = ONLINE_LEARNING_SAVE_MODEL_PATH
+ONLINE_LEARNING_EPOCHS = 1
+ONLINE_LEARNING_BATCH_SIZE = 4000
+ONLINE_LEARNING_LEARNING_RATE = 0.01
+ONLINE_LEARNING_L2 = 1e-4
 
 # ------------------------
 # MPC Scheduler Parameters / MPC 调度器参数

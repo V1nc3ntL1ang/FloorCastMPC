@@ -7,10 +7,10 @@ from __future__ import annotations
 import itertools, multiprocessing as mp, csv, os
 from datetime import datetime
 
-import config as cfg
-import models.objective as objective
+from models import config as cfg
+from models import objective as objective
 import main as main_module
-import mpc_scheduler as mpc_module
+import scheduler.mpc_scheduler as mpc_module
 from models.request import generate_requests_weekday, generate_requests_weekend
 
 
@@ -43,11 +43,19 @@ def _simulate_week_totals():
     cfg.SIM_ENABLE_PLOTS = False
     cfg.SIM_ENABLE_LOG = False
 
+    # 与 main 保持一致：若设置了 DEST_MODEL_PATH，则加载目的地预测模型
+    if hasattr(main_module, "_maybe_load_destination_model"):
+        try:
+            main_module._maybe_load_destination_model()
+        except Exception:
+            pass
+
     weekly_totals = {"baseline": 0.0, "mpc": 0.0}
 
     try:
         for day_index, (day_label, day_type) in enumerate(main_module.DAY_SCHEDULE):
-            seed_shift = day_index * 1000
+            # 与 main.py 对齐的随机种子偏移
+            seed_shift = day_index * 114514
             if day_type == "weekday":
                 requests = generate_requests_weekday(
                     cfg.WEEKDAY_TOTAL_REQUESTS, seed_shift=seed_shift
@@ -117,11 +125,11 @@ def _worker(combo):
 def main():
     # ---- 参数空间 ----
     scales = [30, 60, 90, 120, 150]
-    exponents = [1.2, 1.5, 2.0, 2.5]
-    thresholds = [5, 15, 30, 45]
+    exponents = [1.25, 1.5, 1.75, 2, 2.25, 2.5]
+    thresholds = [5, 10, 15, 25, 35, 45]
     multipliers = [2.0]
-    lookahead_windows = [240, 360, 480, 600, 720]
-    max_batches = [12, 20, 28, 36, 44]
+    lookahead_windows = [240]
+    max_batches = [36]
 
     combos = list(
         itertools.product(

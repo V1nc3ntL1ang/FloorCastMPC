@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
+import subprocess
+import sys
 from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
 from typing import Callable, Dict, List, Sequence, Tuple
 
-import config as cfg
-from models.baseline_scheduler import assign_requests_greedy, simulate_dispatch
+from models import config as cfg
+from scheduler.baseline_scheduler import assign_requests_greedy, simulate_dispatch
 from models.objective import (
     compute_objective,
     compute_theoretical_limit,
@@ -20,7 +25,8 @@ from models.utils import (
     plot_wait_distribution,
 )
 from models.variables import ElevatorState
-from mpc_scheduler import assign_requests_mpc
+from scheduler.mpc_scheduler import assign_requests_mpc
+from scheduler.mpc_scheduler.prediction_api import load_destination_model
 
 
 def _extract_wait_times(served_requests) -> List[float]:
@@ -53,7 +59,11 @@ def _run_strategy(
     requests_copy = deepcopy(base_requests)
     elevators = [ElevatorState(id=k + 1, floor=1) for k in range(cfg.ELEVATOR_COUNT)]
 
-    assign_fn(requests_copy, elevators)
+    if name == "mpc":
+        weekday_idx = DAY_NAME_TO_WEEKDAY.get(day_label, 0)
+        assign_fn(requests_copy, elevators, weekday=weekday_idx)
+    else:
+        assign_fn(requests_copy, elevators)
 
     (
         system_time,
@@ -71,6 +81,7 @@ def _run_strategy(
         emptyload_energy,
         running_energy,
         wait_penalty_value=passenger_metrics.wait_penalty_total,
+        zero_wait_count=passenger_metrics.zero_wait_count,
     )
     (
         theoretical_breakdown,
@@ -136,8 +147,149 @@ DAY_SCHEDULE: Sequence[Tuple[str, str]] = (
     ("Sun", "weekend"),
 )
 
+DAY_NAME_TO_WEEKDAY = {label: idx for idx, (label, _) in enumerate(DAY_SCHEDULE)}
+
+
+def _maybe_load_destination_model() -> None:
+    path = os.environ.get("DEST_MODEL_PATH", "").strip()
+    if not path:
+        return
+    try:
+        load_destination_model(path)
+        print(f"[DestPredictor] Loaded destination model from: {path}")
+    except Exception as exc:
+        print(f"[DestPredictor] Failed to load model '{path}': {exc}")
+
+
+def _prepare_online_learning_run_dir() -> str | None:
+    base = Path(cfg.ONLINE_LEARNING_DATA_DIR)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = base / f"run_{timestamp}"
+    try:
+        run_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        print(
+            f"[DestPredictor] Failed to create online-learning dir '{run_dir}': {exc}"
+        )
+        return None
+    return str(run_dir)
+
+
+def _persist_online_learning_data(
+    base_dir: str,
+    day_index: int,
+    day_label: str,
+    weekday_index: int,
+    result: Dict[str, object],
+) -> None:
+    if not base_dir:
+        return
+
+    elevators = result.get("elevators", [])
+    records: List[Dict[str, float | int]] = []
+    for elev in elevators:
+        for req in getattr(elev, "served_requests", []):
+            origin = getattr(req, "origin", None)
+            destination = getattr(req, "destination", None)
+            arrival = getattr(req, "arrival_time", None)
+            if origin is None or destination is None or arrival is None:
+                continue
+            load = float(getattr(req, "load", 0.0))
+            records.append(
+                {
+                    "origin": int(origin),
+                    "destination": int(destination),
+                    "arrival_time": float(arrival),
+                    "load": load,
+                    "weekday": int(weekday_index),
+                }
+            )
+
+    if not records:
+        return
+
+    payload = {
+        "day_index": int(day_index),
+        "day_label": day_label,
+        "weekday": int(weekday_index),
+        "timestamp": datetime.now().isoformat(),
+        "request_count": len(records),
+        "requests": records,
+    }
+
+    filename = f"{day_index:02d}_{day_label.lower()}.json"
+    path = Path(base_dir) / filename
+    try:
+        with path.open("w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        print(f"[DestPredictor] Failed to write online-learning data '{path}': {exc}")
+
+
+def _invoke_offline_training(data_dir: str | None) -> None:
+    if not data_dir:
+        return
+    data_path = Path(data_dir)
+    if not data_path.exists():
+        return
+    if not any(data_path.glob("*.json")):
+        print(
+            "[DestPredictor] No online-learning data collected; skip offline training."
+        )
+        return
+
+    script = cfg.ONLINE_LEARNING_TRAIN_SCRIPT
+    if not script:
+        print("[DestPredictor] No training script configured; skip offline training.")
+        return
+
+    script_path = Path(script)
+    if not script_path.is_absolute():
+        script_path = Path.cwd() / script_path
+    if not script_path.exists():
+        print(f"[DestPredictor] Training script not found: {script_path}")
+        return
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--data-dir",
+        str(data_path),
+        "--epochs",
+        str(max(1, int(cfg.ONLINE_LEARNING_EPOCHS))),
+        "--batch-size",
+        str(max(1, int(cfg.ONLINE_LEARNING_BATCH_SIZE))),
+        "--learning-rate",
+        str(float(cfg.ONLINE_LEARNING_LEARNING_RATE)),
+        "--l2",
+        str(float(cfg.ONLINE_LEARNING_L2)),
+    ]
+
+    if cfg.ONLINE_LEARNING_LOAD_MODEL_PATH:
+        cmd.extend(["--load-model", cfg.ONLINE_LEARNING_LOAD_MODEL_PATH])
+    if cfg.ONLINE_LEARNING_SAVE_MODEL_PATH:
+        save_path = Path(cfg.ONLINE_LEARNING_SAVE_MODEL_PATH)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd.extend(["--save-model", str(save_path)])
+
+    print("[DestPredictor] Starting offline training:")
+    print("  $", " ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True)
+        print("[DestPredictor] Offline training completed.")
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"[DestPredictor] Offline training failed with exit code {exc.returncode}."
+        )
+
 
 def main() -> None:
+    _maybe_load_destination_model()
+
+    online_data_dir = None
+    if cfg.ONLINE_LEARNING_ENABLE:
+        online_data_dir = _prepare_online_learning_run_dir()
+
     strategies: Sequence[
         Tuple[str, Callable[[List[object], List[ElevatorState]], None]]
     ] = (
@@ -158,6 +310,8 @@ def main() -> None:
                 cfg.WEEKEND_TOTAL_REQUESTS, seed_shift=seed_shift
             )
 
+        weekday_index = DAY_NAME_TO_WEEKDAY.get(day_label, day_index % 7)
+
         for strat_name, assign_fn in strategies:
             result = _run_strategy(
                 day_label,
@@ -169,40 +323,68 @@ def main() -> None:
             result["label"] = f"{day_label}-{strat_name}"
             results.append(result)
 
-    aggregated_waits: Dict[str, List[float]] = {"baseline": [], "mpc": []}
+            if (
+                cfg.ONLINE_LEARNING_ENABLE
+                and strat_name == "mpc"
+                and online_data_dir is not None
+            ):
+                _persist_online_learning_data(
+                    online_data_dir,
+                    day_index,
+                    day_label,
+                    weekday_index,
+                    result,
+                )
 
-    if cfg.SIM_ENABLE_PLOTS:
+    enable_global_plot = cfg.SIM_ENABLE_PLOTS or cfg.SIM_ENABLE_PLOTS_GLOBAL
+    enable_time_plot = cfg.SIM_ENABLE_PLOTS or cfg.SIM_ENABLE_PLOTS_TIME
+    enable_dist_plot = cfg.SIM_ENABLE_PLOTS or cfg.SIM_ENABLE_PLOTS_DISTRIBUTION
+
+    aggregated_waits: Dict[str, List[float]] | None = (
+        {"baseline": [], "mpc": []} if enable_dist_plot else None
+    )
+
+    if enable_global_plot or enable_time_plot or enable_dist_plot:
         for result in results:
             strat_name = result["name"]
             day_label = result["day"]
-            aggregated_waits[strat_name].extend(result["wait_times"])
-            title_label = f"{day_label} — {strat_name.title()} Strategy"
-            base_filename = f"{day_label.lower()}_{strat_name}"
             elevator_list = result["elevators"]
-            plot_elevator_movements(
-                elevator_list,
-                filename=os.path.join(
-                    DEFAULT_PLOT_DIR,
-                    f"elevator_schedule_global_{base_filename}.png",
-                ),
-                strategy_label=title_label,
-            )
-            plot_elevator_movements_time(
-                elevator_list,
-                filename=os.path.join(
-                    DEFAULT_PLOT_DIR,
-                    f"elevator_schedule_time_global_{base_filename}.png",
-                ),
-                strategy_label=title_label,
-            )
 
-        overall_wait_series = [
-            (strat.upper(), waits) for strat, waits in aggregated_waits.items()
-        ]
-        plot_wait_distribution(
-            overall_wait_series,
-            filename=os.path.join(DEFAULT_PLOT_DIR, "wait_distribution_week.png"),
-        )
+            if enable_dist_plot and aggregated_waits is not None:
+                aggregated_waits.setdefault(strat_name, []).extend(result["wait_times"])
+
+            if enable_global_plot:
+                title_label = f"{day_label} — {strat_name.title()} Strategy"
+                base_filename = f"{day_label.lower()}_{strat_name}"
+                plot_elevator_movements(
+                    elevator_list,
+                    filename=os.path.join(
+                        DEFAULT_PLOT_DIR,
+                        f"elevator_schedule_global_{base_filename}.png",
+                    ),
+                    strategy_label=title_label,
+                )
+
+            if enable_time_plot:
+                title_label = f"{day_label} — {strat_name.title()} Strategy"
+                base_filename = f"{day_label.lower()}_{strat_name}"
+                plot_elevator_movements_time(
+                    elevator_list,
+                    filename=os.path.join(
+                        DEFAULT_PLOT_DIR,
+                        f"elevator_schedule_time_global_{base_filename}.png",
+                    ),
+                    strategy_label=title_label,
+                )
+
+        if enable_dist_plot and aggregated_waits is not None:
+            overall_wait_series = [
+                (strat.upper(), waits) for strat, waits in aggregated_waits.items()
+            ]
+            plot_wait_distribution(
+                overall_wait_series,
+                filename=os.path.join(DEFAULT_PLOT_DIR, "wait_distribution_week.png"),
+            )
 
     weekly_totals = {
         "baseline": {
@@ -314,6 +496,9 @@ def main() -> None:
             )
         )
         print("Objective Cost (sum over week): {:.2f}".format(totals["objective"]))
+
+    if cfg.ONLINE_LEARNING_ENABLE:
+        _invoke_offline_training(online_data_dir)
 
 
 if __name__ == "__main__":

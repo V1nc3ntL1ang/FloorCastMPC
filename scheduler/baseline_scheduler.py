@@ -1,4 +1,4 @@
-import config as cfg
+from models import config as cfg
 from models.kinematics import travel_time
 from models.temporal import hold_time
 from models.energy import segment_energy, standby_energy

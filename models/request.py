@@ -1,6 +1,6 @@
 import random
 
-import config as cfg
+from models import config as cfg
 from models.destination import sample_destination
 from models.utils import rand_upper_floor, validate_ratios
 from models.variables import Request
